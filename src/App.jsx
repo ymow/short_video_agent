@@ -23,12 +23,12 @@ const creatomateTemplateId = "006ce3c2-c215-4f2b-b38b-3ed184336793";
 const createVideoBlueprintFromAI = async (promptText) => {
     console.log(`🤖 AI (Text) 正在為以下提示創建腳本: "${promptText}"`);
     const structuredPrompt = `
-        您是一位專業的房地產影片製作人。您的任務是根據用戶的請求，生成一個用於後續處理的 JSON 物件。
+        您是一位專業的影片製作人。您的任務是根據用戶的請求，生成一個用於後續處理的 JSON 物件。
         用戶請求: "${promptText}"
         您必須生成一個 JSON 物件，其中包含兩部分：一個 "text_modifications" 物件和一個 "image_prompts" 物件。
 
-        1.  **"text_modifications" 物件**: 包含所有文字資訊，例如地址、價格、細節等。
-        2.  **"image_prompts" 物件**: 包含 6 個鍵 ("photo_1_prompt" 到 "photo_5_prompt", 以及 "agent_photo_prompt")。每個鍵的值都應該是一段**詳細的、用於 AI 圖片生成的英文描述**。這些描述應該具體、富有畫面感，以便生成高品質的圖片。例如："A stunning photograph of a modern luxury house exterior at dusk, with warm lights glowing from within, featuring a large swimming pool in the foreground, Malibu, California."
+        1.  **"text_modifications" 物件**: 包含所有文字資訊，例如旁白內容、標題、時間戳等。
+        2.  **"image_prompts" 物件**: 包含 6 個鍵 ("photo_1_prompt" 到 "photo_5_prompt", 以及 "agent_photo_prompt")。每個鍵的值都應該是一段**詳細的、用於 AI 圖片生成的英文描述**。這些描述應該具體、富有畫面感，以便生成高品質的圖片。描述應該完全符合用戶請求的內容主題。例如，如果用戶要求汽車歷史影片，應該生成："A historical black and white photograph of the 1886 Benz Patent-Motorwagen, the world's first automobile, displayed in a vintage setting"。
 
         重要：僅輸出原始的 JSON 物件，不要用 markdown 包裝。
     `;
@@ -50,39 +50,39 @@ const createVideoBlueprintFromAI = async (promptText) => {
 };
 
 /**
- * 使用 Imagen 模型根據文字提示生成圖片。
+ * 要求 Gemini AI 根據文字提示生成圖片。
  */
 const generateImageFromAI = async (imagePrompt) => {
-    console.log(`   - 🎨 AI (Image) 正在生成圖片: "${imagePrompt}"`);
-    const payload = {
-        instances: [{ prompt: imagePrompt }],
-        parameters: { "sampleCount": 1 }
-    };
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${GEMINI_API_KEY}`;
-    
-    const response = await fetch(apiUrl, {
+    console.log(`🎨 AI (Image) 正在為以下提示創建圖片: "${imagePrompt}"`);
+
+    // 使用 Creatomate 的代理來調用 Gemini，因為它處理了身份驗證和速率限制
+    const imageApiUrl = 'https://creatomate.com/api/v1/images';
+
+    const response = await fetch(imageApiUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        headers: {
+            'Authorization': `Bearer ${CREATOMATE_API_KEY}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            prompt: imagePrompt,
+            // 確保圖片尺寸與範本中的占位符相符
+            output_width: 800,
+            output_height: 600,
+        })
     });
 
     if (!response.ok) {
-        if (response.status === 429) {
-            console.warn('   - 觸發速率限制，將在 20 秒後重試...');
-            await new Promise(resolve => setTimeout(resolve, 20000));
-            return generateImageFromAI(imagePrompt);
-        }
-        throw new Error(`圖片生成失敗: ${response.statusText}`);
+        const errorBody = await response.text();
+        throw new Error(`AI 圖片生成失敗: ${response.statusText} - ${errorBody}`);
     }
 
     const result = await response.json();
-    if (result.predictions && result.predictions[0] && result.predictions[0].bytesBase64Encoded) {
-        return `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
-    } else {
-        throw new Error('從圖片生成 API 收到的回應格式無效。');
-    }
-};
+    const imageUrl = result[0].url;
 
+    console.log(`   - ✅ AI (Image) 已生成圖片: ${imageUrl}`);
+    return imageUrl;
+};
 
 // --- 主應用程式組件 ---
 
@@ -92,6 +92,18 @@ export default function App() {
     const [isLoading, setIsLoading] = useState(false);
     const [previewData, setPreviewData] = useState(null);
     const [finalVideoUrl, setFinalVideoUrl] = useState(null);
+
+    // 檢查 API 金鑰是否已設定
+    React.useEffect(() => {
+        if (!GEMINI_API_KEY) {
+            setStatus('錯誤：GEMINI_API_KEY 環境變數未設定');
+            console.error('GEMINI_API_KEY is not set');
+        }
+        if (!CREATOMATE_API_KEY) {
+            setStatus('錯誤：CREATOMATE_API_KEY 環境變數未設定');
+            console.error('CREATOMATE_API_KEY is not set');
+        }
+    }, []);
 
     const handleGeneratePreview = async () => {
         if (!prompt) {
@@ -145,6 +157,12 @@ export default function App() {
         setStatus('正在發送資料至影片引擎進行渲染...');
 
         try {
+            // 使用生產環境圖片 URL
+            console.log('使用生產環境圖片 URL:', previewData.generated_images.map(img => ({
+                url: img,
+                isProductionUrl: !img.startsWith('data:image/')
+            })));
+
             const imageModifications = {
                 "Photo-1.source": previewData.generated_images[0],
                 "Photo-2.source": previewData.generated_images[1],
@@ -200,7 +218,7 @@ export default function App() {
                         <Video className="w-8 h-8" />
                         AI 影片工作室
                     </CardTitle>
-                    <p className="text-muted-foreground">輸入一段描述，讓 AI 生成腳本與所有圖片，並製作成影片。</p>
+                    <p className="text-muted-foreground">輸入任何主題的描述，讓 AI 生成腳本與所有圖片，並製作成影片。</p>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <div className="space-y-4">
@@ -208,7 +226,7 @@ export default function App() {
                             value={prompt}
                             onChange={(e) => setPrompt(e.target.value)}
                             rows={3}
-                            placeholder="例如：一間位於台北信義區，面向 101 大樓的頂層豪華公寓..."
+                            placeholder="例如：汽車歷史從 1886 年第一台汽車到現代電動車的演變過程..."
                             disabled={isLoading}
                         />
                         <Button
