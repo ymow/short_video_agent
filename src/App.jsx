@@ -7,13 +7,11 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Video, Image, FileText } from 'lucide-react';
 
 // --- 組態設定 ---
-const CREATOMATE_API_KEY = '01185cf7a90a4b029617329818b8c930631e2d782ced82ee137fb26da736c9b742e1b148b27c8a89b14b58c0fb1613d3';
+const CREATOMATE_API_KEY = import.meta.env.VITE_CREATOMATE_API_KEY;
 const CREATOMATE_API_URL = 'https://api.creatomate.com/v1/renders';
 
-// 重要：請替換成您自己的 Gemini API 金鑰。
-// 在真實的產品級應用中，API 金鑰絕不應該暴露在前端程式碼中。
-// 應透過後端伺服器代理請求來保護金鑰。
-const GEMINI_API_KEY = 'AIzaSyCGqnPcpbAJcjK7BTAYdennfCHbQ-bEu9E'; 
+// 重要：API 金鑰現在從環境變數讀取以確保安全性
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY; 
 
 const creatomateTemplateId = "006ce3c2-c215-4f2b-b38b-3ed184336793";
 
