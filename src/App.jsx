@@ -55,20 +55,26 @@ const createVideoBlueprintFromAI = async (promptText) => {
 const generateImageFromAI = async (imagePrompt) => {
     console.log(`🎨 AI (Image) 正在為以下提示創建圖片: "${imagePrompt}"`);
 
-    // 使用 Creatomate 的代理來調用 Gemini，因為它處理了身份驗證和速率限制
-    const imageApiUrl = 'https://creatomate.com/api/v1/images';
+    // 使用 Gemini 2.0 Flash 的圖片生成功能
+    const imageApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`;
 
     const response = await fetch(imageApiUrl, {
         method: 'POST',
         headers: {
-            'Authorization': `Bearer ${CREATOMATE_API_KEY}`,
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            prompt: imagePrompt,
-            // 確保圖片尺寸與範本中的占位符相符
-            output_width: 800,
-            output_height: 600,
+            contents: [{
+                parts: [{
+                    text: `Generate a high-quality, realistic image based on this description: ${imagePrompt}. The image should be professional, clear, and visually appealing with dimensions suitable for video content.`
+                }]
+            }],
+            generationConfig: {
+                temperature: 0.7,
+                candidateCount: 1,
+                maxOutputTokens: 8192,
+                responseModalities: ["TEXT", "IMAGE"]
+            }
         })
     });
 
@@ -78,10 +84,21 @@ const generateImageFromAI = async (imagePrompt) => {
     }
 
     const result = await response.json();
-    const imageUrl = result[0].url;
-
-    console.log(`   - ✅ AI (Image) 已生成圖片: ${imageUrl}`);
-    return imageUrl;
+    
+    // 檢查回應中是否包含圖片
+    if (result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts) {
+        for (const part of result.candidates[0].content.parts) {
+            if (part.inlineData && part.inlineData.mimeType && part.inlineData.mimeType.startsWith('image/')) {
+                // 將 base64 圖片資料轉換為 data URL
+                const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                console.log(`   - ✅ AI (Image) 已生成圖片`);
+                return imageUrl;
+            }
+        }
+    }
+    
+    // 如果沒有找到圖片，拋出錯誤
+    throw new Error('Gemini 沒有返回圖片資料');
 };
 
 // --- 主應用程式組件 ---
